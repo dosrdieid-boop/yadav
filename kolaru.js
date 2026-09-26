@@ -63,7 +63,7 @@ if (tokens.length === 0) {
 }
 
 // --- SINGLE GLOBAL AUDIO PLAYER (perfect sync for all bots) ---
-let globalVolume = 10.0;
+let globalVolume = 12.0;
 let globalMute = true;
 let globalDeaf = false;
 let globalAudioProcess = null;
@@ -100,7 +100,7 @@ function playGlobalAudio() {
 
   globalAudioProcess = spawn(ffmpeg, [
     '-i', './shared_audio.mp3',
-    '-af', `volume=${globalVolume},alimiter=limit=0.95`,
+    '-af', `volume=${globalVolume},asoftclip=type=tanh:threshold=0.88:output=0.92:oversample=4,aecho=0.8:0.12:55:0.18,alimiter=limit=0.95`,
     '-f', 's16le',
     '-ar', '48000',
     '-ac', '2',
@@ -482,9 +482,9 @@ const server = http.createServer(async (req, res) => {
     </div>
     <div style="margin-bottom: 16px;">
       <label style="display:flex; justify-content:space-between; margin-bottom:8px; font-weight:bold; color:#f43f5e;">
-        Volume Multiplier: <span id="volDisplay">10.0x</span>
+        Volume Multiplier: <span id="volDisplay">12.0x</span>
       </label>
-      <input type="range" id="volSlider" min="0" max="20" step="0.1" value="10" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
+      <input type="range" id="volSlider" min="0" max="30" step="0.1" value="12" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
     </div>
     <div class="actions">
       <button id="uploadPlayBtn" style="background:#8b5cf6;color:#fff;">Upload & Play to All</button>
@@ -1075,9 +1075,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseJSONBody(req);
       const newVol = parseFloat(body.volume);
-      if (!Number.isFinite(newVol) || newVol < 0 || newVol > 20) {
+      if (!Number.isFinite(newVol) || newVol < 0 || newVol > 30) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Volume must be between 0 and 20' }));
+        res.end(JSON.stringify({ error: 'Volume must be between 0 and 30' }));
         return;
       }
       globalVolume = newVol;
