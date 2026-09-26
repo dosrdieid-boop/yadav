@@ -8,6 +8,7 @@ const ffmpeg = require('ffmpeg-static');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { parseTokenList, addTokenToList, persistTokenList } = require('./token-store');
 
 function parseList(value) {
@@ -50,7 +51,12 @@ const maxBots = Number.isFinite(rawMaxBots) && rawMaxBots > 0 ? Math.floor(rawMa
 const host = process.env.HOST || process.env.HOSTNAME || '0.0.0.0';
 const port = Number(process.env.PORT || 3000);
 const keepAliveMs = Number(process.env.KEEPALIVE_MS || 15000);
+const dashboardPassword = process.env.DASHBOARD_PASSWORD || '';
 const envFilePath = path.join(process.cwd(), '.env');
+
+if (process.env.NODE_ENV === 'production' && !dashboardPassword) {
+  throw new Error('DASHBOARD_PASSWORD must be set in production.');
+}
 
 if (tokens.length === 0) {
   console.warn('⚠️ No BOT_TOKENS loaded at startup. Add one from the website and it will log in automatically.');
@@ -59,7 +65,7 @@ if (tokens.length === 0) {
 }
 
 // --- SINGLE GLOBAL AUDIO PLAYER (perfect sync for all bots) ---
-let globalVolume = 2.0;
+let globalVolume = 5.0;
 let globalMute = true;
 let globalDeaf = false;
 let globalAudioProcess = null;
@@ -96,7 +102,7 @@ function playGlobalAudio() {
 
   globalAudioProcess = spawn(ffmpeg, [
     '-i', './shared_audio.mp3',
-    '-af', `volume=${globalVolume}`,
+    '-af', `volume=${globalVolume},alimiter=limit=0.95`,
     '-f', 's16le',
     '-ar', '48000',
     '-ac', '2',
@@ -335,9 +341,9 @@ async function addTokenAndLogin(newToken) {
     throw new Error('Token is required.');
   }
 
-  const updatedTokens = addTokenToList(tokens, token, Number.MAX_SAFE_INTEGER);
+  const updatedTokens = addTokenToList(tokens, token, maxBots);
   const isDuplicate = tokens.includes(token);
-  const isAtCapacity = updatedTokens.length === tokens.length && !updatedTokens.includes(token);
+  const isAtCapacity = !updatedTokens.includes(token);
 
   if (isDuplicate) {
     throw new Error('This token is already added.');
@@ -390,6 +396,30 @@ if (bots.length > 0) {
 console.log(`🧠 Health endpoint enabled on port ${port}`);
 
 const server = http.createServer(async (req, res) => {
+  const isHealthCheck = req.url === '/health' && req.method === 'GET';
+  if (dashboardPassword && !isHealthCheck) {
+    const authorization = req.headers.authorization || '';
+    const encodedCredentials = authorization.startsWith('Basic ')
+      ? authorization.slice('Basic '.length)
+      : '';
+    let suppliedPassword = '';
+    try {
+      const credentials = Buffer.from(encodedCredentials, 'base64').toString('utf8');
+      suppliedPassword = credentials.slice(credentials.indexOf(':') + 1);
+    } catch (error) {}
+    const expected = Buffer.from(dashboardPassword);
+    const supplied = Buffer.from(suppliedPassword);
+    const authorized = expected.length === supplied.length && crypto.timingSafeEqual(expected, supplied);
+    if (!authorized) {
+      res.writeHead(401, {
+        'Content-Type': 'application/json',
+        'WWW-Authenticate': 'Basic realm="Bot Dashboard", charset="UTF-8"',
+      });
+      res.end(JSON.stringify({ error: 'Dashboard password required' }));
+      return;
+    }
+  }
+
   if (req.url === '/' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(`<!DOCTYPE html>
@@ -426,9 +456,11 @@ const server = http.createServer(async (req, res) => {
     <h2 style="margin-top:0;">Token Manager</h2>
     <div class="form-row">
       <input id="tokenInput" placeholder="Paste Discord bot token" />
+      <input id="tokenFile" type="file" accept=".txt,text/plain" />
     </div>
     <div class="actions">
       <button id="addTokenBtn" style="background:#8b5cf6;color:#fff;">Add Token</button>
+      <button id="importTokensBtn" style="background:#0891b2;color:#fff;">Import .txt Tokens</button>
       <button id="refreshTokensBtn" style="background:#475569;color:#fff;">Refresh Tokens</button>
     </div>
     <div id="tokenMessage" style="margin:18px 0 0;color:#cbd5e1;"></div>
@@ -457,9 +489,9 @@ const server = http.createServer(async (req, res) => {
     </div>
     <div style="margin-bottom: 16px;">
       <label style="display:flex; justify-content:space-between; margin-bottom:8px; font-weight:bold; color:#f43f5e;">
-        Volume Multiplier: <span id="volDisplay">2.0x</span>
+        Volume Multiplier: <span id="volDisplay">5.0x</span>
       </label>
-      <input type="range" id="volSlider" min="0" max="1000" step="0.1" value="2" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
+      <input type="range" id="volSlider" min="0" max="10" step="0.1" value="5" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
     </div>
     <div class="actions">
       <button id="uploadPlayBtn" style="background:#8b5cf6;color:#fff;">Upload & Play to All</button>
@@ -624,6 +656,7 @@ const server = http.createServer(async (req, res) => {
     const guildInput = document.getElementById('inputGuild');
     const channelInput = document.getElementById('inputChannel');
     const tokenInput = document.getElementById('tokenInput');
+    const tokenFileInput = document.getElementById('tokenFile');
 
     const renderTokenList = (data) => {
       if (!data || !Array.isArray(data.tokens)) {
@@ -638,7 +671,7 @@ const server = http.createServer(async (req, res) => {
 
       tokenListEl.innerHTML = data.tokens.map((tokenItem, index) => {
         const item = tokenItem || {};
-        const token = item.token || '';
+        const token = item.masked || (item.token ? item.token.slice(0, 8) + '...' + item.token.slice(-4) : 'token hidden');
         const status = item.status || 'waiting';
         const label = status === 'ready' ? 'Ready' : status === 'invalid' ? 'Invalid' : status === 'offline' ? 'Offline' : 'Waiting';
         const statusColor = status === 'ready' ? '#22c55e' : status === 'invalid' ? '#f97316' : status === 'offline' ? '#fbbf24' : '#38bdf8';
@@ -647,7 +680,7 @@ const server = http.createServer(async (req, res) => {
         return '<div style="padding:12px; border:1px solid rgba(148,163,184,.22); border-radius:12px; background:#0f172a; display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">'
           + '<div style="flex:1; min-width:220px;">'
           + '<div><strong>Token ' + (index + 1) + '</strong> <span style="color:' + statusColor + '; font-weight:700;">' + label + '</span></div>'
-          + '<div style="font-size:12px; color:#94a3b8; word-break:break-all; margin-top:4px;">' + (token ? token.slice(0, 8) + '...' + token.slice(-4) : 'token hidden') + '</div>'
+          + '<div style="font-size:12px; color:#94a3b8; word-break:break-all; margin-top:4px;">' + token + '</div>'
           + errorText
           + '</div>'
           + '<button type="button" data-token-index="' + index + '" class="delete-token-btn" style="background:#ef4444;color:#fff;padding:8px 12px;border-radius:10px;border:none;cursor:pointer; font-weight:700;">Delete</button>'
@@ -739,6 +772,30 @@ const server = http.createServer(async (req, res) => {
         const data = await res.json();
         tokenMessageEl.textContent = data.status || data.error || 'Token added';
         tokenInput.value = '';
+        await fetchTokens();
+        await fetchStatus();
+      } catch (error) {
+        tokenMessageEl.textContent = 'Error: ' + error.message;
+      }
+    });
+
+    document.getElementById('importTokensBtn').addEventListener('click', async () => {
+      const file = tokenFileInput.files[0];
+      if (!file) {
+        tokenMessageEl.textContent = 'Choose a .txt file first.';
+        return;
+      }
+
+      tokenMessageEl.textContent = 'Importing tokens...';
+      try {
+        const res = await fetch('/tokens/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: await file.text() })
+        });
+        const payload = await res.json();
+        tokenMessageEl.textContent = payload.status || payload.error || 'Import complete';
+        if (res.ok) tokenFileInput.value = '';
         await fetchTokens();
         await fetchStatus();
       } catch (error) {
@@ -883,7 +940,6 @@ const server = http.createServer(async (req, res) => {
       }
       return {
         index,
-        token,
         masked: token.slice(0, 8) + '...' + token.slice(-4),
         status,
         lastError,
@@ -912,6 +968,39 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message || 'Could not add token' }));
+    }
+    return;
+  }
+
+  if (req.url === '/tokens/import' && req.method === 'POST') {
+    try {
+      const body = await parseJSONBody(req);
+      const importedTokens = parseTokenList(body.text || body.tokens || '');
+      if (importedTokens.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'The .txt file contains no tokens' }));
+        return;
+      }
+
+      const results = [];
+      for (const token of importedTokens) {
+        try {
+          results.push(await addTokenAndLogin(token));
+        } catch (error) {
+          results.push({ added: false, error: error.message || 'Could not add token' });
+        }
+      }
+      const addedCount = results.filter((result) => result.added).length;
+      const failures = results.length - addedCount;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: `Imported ${addedCount} token(s)${failures ? `; ${failures} skipped or failed` : ''}.`,
+        added: addedCount,
+        failed: failures,
+      }));
+    } catch (error) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message || 'Could not import tokens' }));
     }
     return;
   }
@@ -993,9 +1082,12 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseJSONBody(req);
       const newVol = parseFloat(body.volume);
-      if (!isNaN(newVol)) {
-        globalVolume = newVol;
+      if (!Number.isFinite(newVol) || newVol < 0 || newVol > 10) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Volume must be between 0 and 10' }));
+        return;
       }
+      globalVolume = newVol;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'volume updated', volume: globalVolume }));
     } catch (error) {

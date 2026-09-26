@@ -15,3 +15,5 @@ services:
         value: 10000
       - key: MAX_BOTS
         value: 5
+      - key: DASHBOARD_PASSWORD
+        sync: false
