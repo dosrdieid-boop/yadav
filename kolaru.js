@@ -63,7 +63,7 @@ if (tokens.length === 0) {
 }
 
 // --- SINGLE GLOBAL AUDIO PLAYER (perfect sync for all bots) ---
-let globalVolume = 35.0;
+let globalVolume = 40.0;
 let globalMute = false;
 let globalDeaf = false;
 let globalAudioProcess = null;
@@ -100,7 +100,7 @@ function playGlobalAudio() {
 
   globalAudioProcess = spawn(ffmpeg, [
     '-i', './shared_audio.mp3',
-    '-af', `dynaudnorm=framelen=250:gausssize=15:peak=0.90:maxgain=8:targetrms=0.18,acompressor=threshold=0.12:ratio=4:attack=15:release=180:makeup=6dB,volume=${globalVolume},asoftclip=type=tanh:threshold=0.80:output=0.92:oversample=4,aecho=0.8:0.22:70:0.22,alimiter=limit=0.95`,
+    '-af', `dynaudnorm=framelen=250:gausssize=15:peak=0.90:maxgain=8:targetrms=0.18,acompressor=threshold=0.12:ratio=4:attack=15:release=180:makeup=6dB,volume=${globalVolume},asoftclip=type=tanh:threshold=0.68:output=0.92:oversample=4,aecho=0.8:0.30:90:0.30,alimiter=limit=0.95`,
     '-f', 's16le',
     '-ar', '48000',
     '-ac', '2',
@@ -482,9 +482,9 @@ const server = http.createServer(async (req, res) => {
     </div>
     <div style="margin-bottom: 16px;">
       <label style="display:flex; justify-content:space-between; margin-bottom:8px; font-weight:bold; color:#f43f5e;">
-        Volume Multiplier: <span id="volDisplay">35.0x</span>
+        Volume Multiplier: <span id="volDisplay">40.0x</span>
       </label>
-      <input type="range" id="volSlider" min="0" max="40" step="0.1" value="35" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
+      <input type="range" id="volSlider" min="0" max="40" step="0.1" value="40" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
     </div>
     <div class="actions">
       <button id="uploadPlayBtn" style="background:#8b5cf6;color:#fff;">Upload & Play to All</button>
