@@ -63,7 +63,7 @@ if (tokens.length === 0) {
 }
 
 // --- SINGLE GLOBAL AUDIO PLAYER (perfect sync for all bots) ---
-let globalVolume = 12.0;
+let globalVolume = 20.0;
 let globalMute = true;
 let globalDeaf = false;
 let globalAudioProcess = null;
@@ -482,9 +482,9 @@ const server = http.createServer(async (req, res) => {
     </div>
     <div style="margin-bottom: 16px;">
       <label style="display:flex; justify-content:space-between; margin-bottom:8px; font-weight:bold; color:#f43f5e;">
-        Volume Multiplier: <span id="volDisplay">12.0x</span>
+        Volume Multiplier: <span id="volDisplay">20.0x</span>
       </label>
-      <input type="range" id="volSlider" min="0" max="30" step="0.1" value="12" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
+      <input type="range" id="volSlider" min="0" max="30" step="0.1" value="20" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
     </div>
     <div class="actions">
       <button id="uploadPlayBtn" style="background:#8b5cf6;color:#fff;">Upload & Play to All</button>
