@@ -46,8 +46,6 @@ let tokens = parseTokenList(rawTokens);
 const autoJoin = (process.env.AUTO_JOIN || 'false').toLowerCase() === 'true';
 const rawChannels = process.env.VOICE_CHANNEL_IDS || process.env.VOICE_CHANNEL_ID || process.env.CHANNEL_ID || '';
 const channelIds = parseList(rawChannels);
-const rawMaxBots = Number(process.env.MAX_BOTS || process.env.MAX_BOT_COUNT || 0);
-const maxBots = Number.isFinite(rawMaxBots) && rawMaxBots > 0 ? Math.floor(rawMaxBots) : Number.MAX_SAFE_INTEGER;
 const host = process.env.HOST || process.env.HOSTNAME || '0.0.0.0';
 const port = Number(process.env.PORT || 3000);
 const keepAliveMs = Number(process.env.KEEPALIVE_MS || 15000);
@@ -61,11 +59,11 @@ if (process.env.NODE_ENV === 'production' && !dashboardPassword) {
 if (tokens.length === 0) {
   console.warn('⚠️ No BOT_TOKENS loaded at startup. Add one from the website and it will log in automatically.');
 } else {
-  console.log(`🔢 Using up to ${Math.min(tokens.length, maxBots)} bot token(s) from BOT_TOKENS/BOT_TOKEN`);
+  console.log(`🔢 Using ${tokens.length} bot token(s) from BOT_TOKENS/BOT_TOKEN`);
 }
 
 // --- SINGLE GLOBAL AUDIO PLAYER (perfect sync for all bots) ---
-let globalVolume = 5.0;
+let globalVolume = 10.0;
 let globalMute = true;
 let globalDeaf = false;
 let globalAudioProcess = null;
@@ -316,7 +314,7 @@ function createBot(token, index) {
   return bot;
 }
 
-const bots = tokens.slice(0, maxBots).map((token, index) => createBot(token, index));
+const bots = tokens.map((token, index) => createBot(token, index));
 
 async function loginBot(bot, index) {
   bot.status = 'logging_in';
@@ -341,16 +339,11 @@ async function addTokenAndLogin(newToken) {
     throw new Error('Token is required.');
   }
 
-  const updatedTokens = addTokenToList(tokens, token, maxBots);
+  const updatedTokens = addTokenToList(tokens, token);
   const isDuplicate = tokens.includes(token);
-  const isAtCapacity = !updatedTokens.includes(token);
 
   if (isDuplicate) {
     throw new Error('This token is already added.');
-  }
-
-  if (isAtCapacity) {
-    throw new Error('This token could not be added.');
   }
 
   tokens = updatedTokens;
@@ -489,9 +482,9 @@ const server = http.createServer(async (req, res) => {
     </div>
     <div style="margin-bottom: 16px;">
       <label style="display:flex; justify-content:space-between; margin-bottom:8px; font-weight:bold; color:#f43f5e;">
-        Volume Multiplier: <span id="volDisplay">5.0x</span>
+        Volume Multiplier: <span id="volDisplay">10.0x</span>
       </label>
-      <input type="range" id="volSlider" min="0" max="10" step="0.1" value="5" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
+      <input type="range" id="volSlider" min="0" max="20" step="0.1" value="10" style="width:100%; accent-color:#f43f5e; cursor:pointer;" />
     </div>
     <div class="actions">
       <button id="uploadPlayBtn" style="background:#8b5cf6;color:#fff;">Upload & Play to All</button>
@@ -1082,9 +1075,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseJSONBody(req);
       const newVol = parseFloat(body.volume);
-      if (!Number.isFinite(newVol) || newVol < 0 || newVol > 10) {
+      if (!Number.isFinite(newVol) || newVol < 0 || newVol > 20) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Volume must be between 0 and 10' }));
+        res.end(JSON.stringify({ error: 'Volume must be between 0 and 20' }));
         return;
       }
       globalVolume = newVol;
